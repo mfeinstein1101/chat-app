@@ -14,11 +14,19 @@ type Message = {
   user_id: string;
   text: string;
   self: boolean;
+  channel_id: number;
+};
+
+type Channel = {
+  id: number;
+  name: string;
 };
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [user, setUser] = useState<User | null>(null);
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -35,10 +43,30 @@ export default function Home() {
   useEffect(() => {
     if (!user) return;
 
+    async function loadChannels() {
+      const { data, error } = await supabase
+        .from("channels")
+        .select("*")
+        .order("id", { ascending: true });
+
+      if (error) console.error(error);
+      else {
+        setChannels(data);
+        setActiveChannel(data[0] ?? null);
+      }
+    }
+
+    loadChannels();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || !activeChannel) return;
+
     async function loadMessages() {
       const { data, error } = await supabase
         .from("messages")
         .select("*")
+        .eq("channel_id", activeChannel!.id)
         .order("created_at", { ascending: true });
 
       if (error) console.error(error);
@@ -48,10 +76,10 @@ export default function Home() {
     loadMessages();
 
     const channel = supabase
-      .channel("messages")
+      .channel(`messages:${activeChannel.id}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages" },
+        { event: "INSERT", schema: "public", table: "messages", filter: `channel_id=eq.${activeChannel.id}` },
         (payload) => {
           const m = payload.new as Message;
           setMessages((prev) => [...prev, { ...m, self: m.user_id === user!.id }]);
@@ -62,7 +90,7 @@ export default function Home() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, activeChannel]);
 
   async function addMessage(text: string) {
     const { data: profile } = await supabase
@@ -73,7 +101,7 @@ export default function Home() {
 
     const { error } = await supabase
       .from("messages")
-      .insert({ text, user: profile?.username, user_id: user?.id });
+      .insert({ text, user: profile?.username, user_id: user?.id, channel_id: activeChannel?.id });
 
     if (error) console.error(error);
   }
@@ -82,7 +110,11 @@ export default function Home() {
 
   return (
     <div className="flex h-screen">
-      <Sidebar />
+      <Sidebar
+        channels={channels}
+        activeChannelId={activeChannel?.id ?? null}
+        onChannelSelect={setActiveChannel}
+      />
       <div className="flex flex-col flex-1">
         <MessageList messages={messages} />
         <MessageInput onSend={addMessage} />
