@@ -15,6 +15,7 @@ type Message = {
   text: string;
   self: boolean;
   channel_id: number;
+  created_at: string;
 };
 
 type Channel = {
