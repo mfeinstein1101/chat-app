@@ -28,6 +28,8 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
+  const [username, setUsername] = useState<string>("");
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -55,10 +57,43 @@ export default function Home() {
         setChannels(data);
         setActiveChannel(data[0] ?? null);
       }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", user!.id)
+        .single();
+
+      if (profile?.username) setUsername(profile.username);
     }
 
     loadChannels();
   }, [user]);
+
+  useEffect(() => {
+    if (!user || !username) return;
+
+    const presenceChannel = supabase.channel("online-users");
+
+    presenceChannel
+      .on("presence", { event: "sync" }, () => {
+        const state = presenceChannel.presenceState();
+        const users = Object.values(state)
+          .flat()
+          .map((presence: any) => presence.username as string);
+        setOnlineUsers(users);
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await presenceChannel.track({ username, user_id: user.id });
+        }
+      });
+
+    return () => {
+      presenceChannel.untrack();
+      supabase.removeChannel(presenceChannel);
+    };
+  }, [user, username]);
 
   useEffect(() => {
     if (!user || !activeChannel) return;
@@ -94,15 +129,9 @@ export default function Home() {
   }, [user, activeChannel]);
 
   async function addMessage(text: string) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("username")
-      .eq("id", user?.id)
-      .single();
-
     const { error } = await supabase
       .from("messages")
-      .insert({ text, user: profile?.username, user_id: user?.id, channel_id: activeChannel?.id });
+      .insert({ text, user: username, user_id: user?.id, channel_id: activeChannel?.id });
 
     if (error) console.error(error);
   }
@@ -115,6 +144,7 @@ export default function Home() {
         channels={channels}
         activeChannelId={activeChannel?.id ?? null}
         onChannelSelect={setActiveChannel}
+        onlineUsers={onlineUsers}
       />
       <div className="flex flex-col flex-1">
         <MessageList messages={messages} />
