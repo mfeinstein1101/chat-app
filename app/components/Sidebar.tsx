@@ -11,9 +11,10 @@ type Props = {
   channels: Channel[];
   activeChannelId: number | null;
   onChannelSelect: (channel: Channel) => void;
+  onlineUsers: string[];
 };
 
-export default function Sidebar({ channels, activeChannelId, onChannelSelect }: Props) {
+export default function Sidebar({ channels, activeChannelId, onChannelSelect, onlineUsers }: Props) {
   async function handleSignOut() {
     await supabase.auth.signOut();
   }
@@ -32,6 +33,17 @@ export default function Sidebar({ channels, activeChannelId, onChannelSelect }: 
           </li>
         ))}
       </ul>
+      <div className="mt-6">
+        <h2 className="text-lg font-semibold mb-2">Online</h2>
+        <ul className="flex flex-col gap-2">
+          {onlineUsers.map((name) => (
+            <li key={name} className="flex items-center gap-2 p-1">
+              <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
+              <span className="text-sm">{name}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
       <button
         onClick={handleSignOut}
         className="mt-auto p-2 text-sm text-gray-400 hover:text-white hover:bg-gray-700 rounded cursor-pointer"
